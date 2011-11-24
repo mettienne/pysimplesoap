@@ -51,6 +51,26 @@ class SoapDispatcher(object):
         soap_ns, soap_uri = self.soap_ns, self.soap_uri
         soap_fault_code = 'VersionMismatch'
 
+        def _response():
+            # build response message
+            if not prefix:
+                xml = """<%(soap_ns)s:Envelope xmlns:%(soap_ns)s="%(soap_uri)s"/>"""
+            else:
+                xml = """<%(soap_ns)s:Envelope xmlns:%(soap_ns)s="%(soap_uri)s"
+                           xmlns:%(prefix)s="%(namespace)s"/>"""
+
+            xml = xml % {'namespace': self.namespace, 'prefix': prefix,
+                         'soap_ns': soap_ns, 'soap_uri': soap_uri}
+
+            response = SimpleXMLElement(xml, namespace=self.namespace,
+                                        prefix=prefix)
+
+            response['xmlns:xsi'] = "http://www.w3.org/2001/XMLSchema-instance"
+            response['xmlns:xsd'] = "http://www.w3.org/2001/XMLSchema"
+
+            body = response.add_child("%s:Body" % soap_ns, ns=False)
+            return response, body
+
         try:
             request = SimpleXMLElement(xml, namespace=self.namespace)
 
@@ -90,41 +110,8 @@ class SoapDispatcher(object):
             ret = function(**args)
             if DEBUG: print ret
 
-        except Exception, e:
-            import sys
-            etype, evalue, etb = sys.exc_info()
-            if DEBUG: 
-                import traceback
-                detail = ''.join(traceback.format_exception(etype, evalue, etb))
-                detail += '\n\nXML REQUEST\n\n' + xml
-            else:
-                detail = None
-            fault = {'faultcode': "%s.%s" % (soap_fault_code, etype.__name__), 
-                     'faultstring': unicode(evalue), 
-                     'detail': detail}
-
-        # build response message
-        if not prefix:
-            xml = """<%(soap_ns)s:Envelope xmlns:%(soap_ns)s="%(soap_uri)s"/>"""  
-        else:
-            xml = """<%(soap_ns)s:Envelope xmlns:%(soap_ns)s="%(soap_uri)s"
-                       xmlns:%(prefix)s="%(namespace)s"/>"""  
-            
-        xml = xml % {'namespace': self.namespace, 'prefix': prefix,
-                     'soap_ns': soap_ns, 'soap_uri': soap_uri}
-
-        response = SimpleXMLElement(xml, namespace=self.namespace,
-                                    prefix=prefix)
-    
-        response['xmlns:xsi'] = "http://www.w3.org/2001/XMLSchema-instance"
-        response['xmlns:xsd'] = "http://www.w3.org/2001/XMLSchema"
-
-        body = response.add_child("%s:Body" % soap_ns, ns=False)
-        if fault:
-            # generate a Soap Fault (with the python exception)
-            body.marshall("%s:Fault" % soap_ns, fault, ns=False)
-        else:
             # return normal value
+            response, body = _response()
             res = body.add_child("%sResponse" % name, ns=prefix)
             if not prefix:
                 res['xmlns'] = self.namespace # add target namespace
@@ -139,6 +126,23 @@ class SoapDispatcher(object):
             elif returns_types is None:
                 # merge xmlelement returned
                 res.import_node(ret)
+
+        except Exception, e:
+            import sys
+            etype, evalue, etb = sys.exc_info()
+            if DEBUG:
+                import traceback
+                detail = ''.join(traceback.format_exception(etype, evalue, etb))
+                detail += '\n\nXML REQUEST\n\n' + xml
+            else:
+                detail = None
+            fault = {'faultcode': "%s.%s" % (soap_fault_code, etype.__name__),
+                     'faultstring': unicode(evalue),
+                     'detail': detail}
+
+            # generate a Soap Fault (with the python exception)
+            response, body = _response()
+            body.marshall("%s:Fault" % soap_ns, fault, ns=False)
 
         return response.as_xml()
 
