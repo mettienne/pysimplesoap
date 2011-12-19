@@ -20,20 +20,21 @@ __version__ = "1.02c"
 import logging
 import xml.dom.minidom
 from decimal import Decimal
-import datetime 
+import datetime
 import time
 
 log = logging.getLogger(__name__)
 
+# Deprecated
 DEBUG = False
 
-# Functions to serialize/unserialize special immutable types:
+# Functions to serialize/deserialize special immutable types:
 def datetime_u(s):
     fmt = "%Y-%m-%dT%H:%M:%S"
     try:
         return datetime.datetime.strptime(s, fmt)
     except:
-	return datetime.datetime.strptime(s, fmt + ".%f")
+        return datetime.datetime.strptime(s, fmt + ".%f")
 datetime_m = lambda dt: dt.isoformat('T')
 date_u = lambda s: datetime.datetime.strptime(s[0:10], "%Y-%m-%d").date()
 date_m = lambda d: d.strftime("%Y-%m-%d")
@@ -59,17 +60,33 @@ Date = datetime.date
 Time = datetime.time
 
 # Define convertion function (python type): xml schema type
-TYPE_MAP = {str:'string',unicode:'string',
-            bool:'boolean', short:'short', byte:'byte',
-            int:'int', long:'long', integer:'integer', 
-            float:'float', double:'double',
-            Decimal:'decimal',
-            datetime.datetime:'dateTime', datetime.date:'date',
-            }
-TYPE_MARSHAL_FN = {datetime.datetime:datetime_m, datetime.date:date_m,}
-TYPE_UNMARSHAL_FN = {datetime.datetime:datetime_u, datetime.date:date_u,
-                     bool:bool_u, str:unicode,
-            }
+TYPE_MAP = {
+    str: 'string',
+    unicode: 'string',
+    bool: 'boolean',
+    short: 'short',
+    byte: 'byte',
+    int: 'int',
+    long: 'long',
+    integer: 'integer',
+    float: 'float',
+    double: 'double',
+    Decimal: 'decimal',
+    datetime.datetime: 'dateTime',
+    datetime.date: 'date',
+}
+
+TYPE_MARSHAL_FN = {
+    datetime.datetime:datetime_m,
+    datetime.date:date_m
+}
+
+TYPE_UNMARSHAL_FN = {
+    datetime.datetime:datetime_u,
+    datetime.date:date_u,
+    bool:bool_u,
+    str:unicode
+}
 
 
 class OrderedDict(dict):
@@ -198,7 +215,7 @@ class SimpleXMLElement(object):
     def __getitem__(self, item):
         "Return xml tag attribute value or a slice of attributes (iter)"
         log.debug('__getitem__(%s)', item)
-        if isinstance(item,basestring):
+        if isinstance(item, basestring):
             if self._element.hasAttribute(item):
                 return self._element.attributes[item].value
         elif isinstance(item, slice):
@@ -291,6 +308,7 @@ class SimpleXMLElement(object):
         "Return xml children tags element"
         elements=[__element for __element in self._element.childNodes
                           if __element.nodeType == __element.ELEMENT_NODE]
+                          
         if not elements:
             return None
             #raise IndexError("Tag %s has no children" % self._element.tagName)
@@ -353,21 +371,46 @@ class SimpleXMLElement(object):
                 else:
                     # if not strict, use default type conversion
                     fn = unicode
-            if isinstance(fn,list):
+            
+            if isinstance(fn, list):
                 value = []
                 children = node.children()
-                for child in children and children() or []:
+                
+                for child in (children and children() or []): # Readability counts
                     value.append(child.unmarshall(fn[0], strict))
-            elif isinstance(fn,dict):
+            
+            elif isinstance(fn, tuple):
+                value = []
+                _d = {}
+                children = node.children()
+                as_dict = len(fn) == 1 and isinstance(fn[0], dict)
+                
+                for child in (children and children() or []): # Readability counts
+                    if as_dict:
+                        _d.update(child.unmarshall(fn[0], strict)) # Merging pairs
+                    else:
+                        value.append(child.unmarshall(fn[0], strict))
+                if as_dict:
+                    value.append(_d)
+                
+                if name in d:
+                    _tmp = list(d[name])
+                    _tmp.extend(value)
+                    value = tuple(_tmp)
+                else:
+                    value = tuple(value)
+            
+            elif isinstance(fn, dict):
                 children = node.children()
                 value = children and children.unmarshall(fn, strict)
+            
             else:
                 if fn is None: # xsd:anyType not unmarshalled
                     value = node
                 elif str(node) or fn == str:
                     try:
-                        # get special desserialization function (if any)
-                        fn = TYPE_UNMARSHAL_FN.get(fn,fn) 
+                        # get special deserialization function (if any)
+                        fn = TYPE_UNMARSHAL_FN.get(fn, fn)
                         if fn == str:
                             # always return an unicode object:
                             value = unicode(node)
@@ -377,37 +420,44 @@ class SimpleXMLElement(object):
                         raise ValueError(u"Tag: %s: %s" % (name, unicode(e)))
                 else:
                     value = None
+            
             d[name] = value
         return d
 
     def marshall(self, name, value, add_child=True, add_comments=False, ns=False):
         "Analize python value and add the serialized XML element using tag name"
         if isinstance(value, dict):  # serialize dict (<key>value</key>)
-            child = add_child and self.add_child(name,ns=ns) or self
+            child = add_child and self.add_child(name, ns=ns) or self
             for k,v in value.items():
                 child.marshall(k, v, add_comments=add_comments, ns=ns)
+        
         elif isinstance(value, tuple):  # serialize tuple (<key>value</key>)
-            child = add_child and self.add_child(name,ns=ns) or self
+            child = add_child and self.add_child(name, ns=ns) or self
             for k,v in value:
-                getattr(self,name).marshall(k, v, add_comments=add_comments, ns=ns)
+                getattr(self, name).marshall(k, v, add_comments=add_comments, ns=ns)
+        
         elif isinstance(value, list): # serialize lists
-            child=self.add_child(name,ns=ns)
+            child=self.add_child(name, ns=ns)
             if add_comments:
                 child.add_comment("Repetitive array of:")
             for t in value:
-                child.marshall(name,t, False, add_comments=add_comments, ns=ns)
+                child.marshall(name, t, False, add_comments=add_comments, ns=ns)
+        
         elif isinstance(value, basestring): # do not convert strings or unicodes
-            self.add_child(name,value,ns=ns)
+            self.add_child(name, value, ns=ns)
+        
         elif value is None: # sent a empty tag?
-            self.add_child(name,ns=ns)
+            self.add_child(name, ns=ns)
+        
         elif value in TYPE_MAP.keys():
             # add commented placeholders for simple tipes (for examples/help only)
-            child = self.add_child(name,ns=ns) 
+            child = self.add_child(name, ns=ns)
             child.add_comment(TYPE_MAP[value])
-        else: # the rest of object types are converted to string 
+        
+        else: # the rest of object types are converted to string
             # get special serialization function (if any)
             fn = TYPE_MARSHAL_FN.get(type(value),str)
-            self.add_child(name,fn(value),ns=ns) 
+            self.add_child(name, fn(value), ns=ns)
 
     def import_node(self, other):
         x = self.__document.importNode(other._element, True)  # deep copy
