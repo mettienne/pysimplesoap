@@ -31,6 +31,7 @@ class SoapDispatcher(object):
                  namespace=None, prefix=False, 
                  soap_uri="http://schemas.xmlsoap.org/soap/envelope/", 
                  soap_ns='soap',
+                 pretty=False,
                  **kwargs):
         self.methods = {}
         self.name = name
@@ -41,6 +42,7 @@ class SoapDispatcher(object):
         self.prefix = prefix
         self.soap_ns = soap_ns
         self.soap_uri = soap_uri
+        self.pretty = pretty
     
     def register_function(self, name, fn, returns=None, args=None, doc=None):
         self.methods[name] = fn, returns, args, doc or getattr(fn,"__doc__","")
@@ -143,7 +145,7 @@ class SoapDispatcher(object):
                 # merge xmlelement returned
                 res.import_node(ret)
 
-        return response.as_xml()
+        return response.as_xml(pretty=self.pretty)
 
     # Introspection functions:
 
