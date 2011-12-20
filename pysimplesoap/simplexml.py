@@ -17,6 +17,7 @@ __copyright__ = "Copyright (C) 2008/009 Mariano Reingart"
 __license__ = "LGPL 3.0"
 __version__ = "1.02c"
 
+import re
 import logging
 import xml.dom.minidom
 from decimal import Decimal
@@ -129,7 +130,13 @@ class OrderedDict(dict):
 class SimpleXMLElement(object):
     "Simple XML manipulation (simil PHP)"
     
-    def __init__(self, text = None, elements = None, document = None, namespace = None, prefix=None):
+    def __init__(self, text=None, elements=None, document=None, namespace=None, prefix=None, namespaces_map={}):
+        """
+        namespaces: {prefix: received_prefix} used to replace our prefixes by this used by client
+        """
+        self.__namespaces_map = namespaces_map
+        _rx = "|".join(namespaces_map.keys())
+        self.__ns_rx = re.compile(r"^(%s):.*$" % _rx)
         self.__ns = namespace
         self.__prefix = prefix
         if text:
@@ -143,7 +150,7 @@ class SimpleXMLElement(object):
             self.__elements = elements
             self.__document = document
     
-    def add_child(self,name,text=None,ns=True):
+    def add_child(self, name, text=None, ns=True):
         "Adding a child tag to a node"
         if not ns or not self.__ns:
             log.debug('adding %s', name)
@@ -164,7 +171,8 @@ class SimpleXMLElement(object):
                     elements=[element],
                     document=self.__document,
                     namespace=self.__ns,
-                    prefix=self.__prefix)
+                    prefix=self.__prefix,
+                    namespaces_map=self.__namespaces_map)
     
     def __setattr__(self, tag, text):
         "Add text child tag node (short form)"
@@ -184,7 +192,7 @@ class SimpleXMLElement(object):
         if not pretty:
             return self.__document.toxml('UTF-8')
         else:
-            return self.__document.toprettyxml(encoding='UTF-8')
+            return self.__document.toprettyxml(indent=" "*4, encoding='UTF-8')
 
     def __repr__(self):
         "Return the XML representation of this tag"
@@ -218,9 +226,11 @@ class SimpleXMLElement(object):
         if isinstance(item, basestring):
             if self._element.hasAttribute(item):
                 return self._element.attributes[item].value
+        
         elif isinstance(item, slice):
             # return a list with name:values
             return self._element.attributes.items()[item]
+        
         else:
             # return element by index (position)
             element = self.__elements[item]
@@ -228,7 +238,8 @@ class SimpleXMLElement(object):
                     elements=[element],
                     document=self.__document,
                     namespace=self.__ns,
-                    prefix=self.__prefix)
+                    prefix=self.__prefix,
+                    namespaces_map=self.__namespaces_map)
             
     def add_attribute(self, name, value):
         "Set an attribute value from a string"
@@ -278,7 +289,8 @@ class SimpleXMLElement(object):
                 elements=elements,
                 document=self.__document,
                 namespace=self.__ns,
-                prefix=self.__prefix)
+                prefix=self.__prefix,
+                namespaces_map=self.__namespaces_map)
         except AttributeError, e:
             raise AttributeError(u"Tag not found: %s (%s)" % (tag, unicode(e)))
 
@@ -294,7 +306,8 @@ class SimpleXMLElement(object):
                     elements=[__element],
                     document=self.__document,
                     namespace=self.__ns,
-                    prefix=self.__prefix)
+                    prefix=self.__prefix,
+                    namespaces_map=self.__namespaces_map)
         except:
             raise
 
@@ -316,7 +329,8 @@ class SimpleXMLElement(object):
                 elements=elements,
                 document=self.__document,
                 namespace=self.__ns,
-                prefix=self.__prefix)
+                prefix=self.__prefix,
+                namespaces_map=self.__namespaces_map)
 
     def __len__(self):
         "Return elements count"
@@ -423,9 +437,21 @@ class SimpleXMLElement(object):
             
             d[name] = value
         return d
+        
+    def _update_ns(self, name):
+        """Replace defined namespace alias with this used by client."""
+        pref = self.__ns_rx.search(name)
+        if pref:
+            pref = pref.groups()[0]
+            try:
+                name = name.replace(pref, self.__namespaces_map[pref]) # TODO: Catch exception
+            except KeyError:
+                log.warning('Unknown namespace alias %s' % name)
+        return name
 
     def marshall(self, name, value, add_child=True, add_comments=False, ns=False):
         "Analize python value and add the serialized XML element using tag name"
+        name = self._update_ns(name)
         if isinstance(value, dict):  # serialize dict (<key>value</key>)
             child = add_child and self.add_child(name, ns=ns) or self
             for k,v in value.items():

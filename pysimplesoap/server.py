@@ -18,11 +18,13 @@ __license__ = "LGPL 3.0"
 __version__ = "1.02c"
 
 import logging
+import traceback
 from simplexml import SimpleXMLElement, TYPE_MAP, DateTime, Date, Decimal
 
 log = logging.getLogger(__name__)
-DEBUG = False
 
+# Deprecated
+DEBUG = False
 
 class SoapDispatcher(object):
     "Simple Dispatcher for SOAP Server"
@@ -32,20 +34,36 @@ class SoapDispatcher(object):
                  soap_uri="http://schemas.xmlsoap.org/soap/envelope/", 
                  soap_ns='soap',
                  pretty=False,
+                 namespaces={},
+                 debug=False,
                  **kwargs):
+        """
+        namespaces: {ns: namespace_uri}
+        """
         self.methods = {}
         self.name = name
         self.documentation = documentation
         self.action = action # base SoapAction
         self.location = location
         self.namespace = namespace # targetNamespace
+        self.namespaces = namespaces
         self.prefix = prefix
         self.soap_ns = soap_ns
         self.soap_uri = soap_uri
         self.pretty = pretty
+        self.debug = debug
     
     def register_function(self, name, fn, returns=None, args=None, doc=None):
-        self.methods[name] = fn, returns, args, doc or getattr(fn,"__doc__","")
+        self.methods[name] = fn, returns, args, doc or getattr(fn, "__doc__", "")
+        
+    @staticmethod
+    def _extra_namespaces(xml, ns):
+        """Extends xml with extra namespaces."""
+        if ns:
+            _tpl = 'xmlns:%s="%s"'
+            _ns_str = " ".join([_tpl % (prefix, uri) for uri, prefix in ns.items() if uri not in xml])
+            xml = xml.replace('/>', ' '+_ns_str+'/>')
+        return xml
         
     def dispatch(self, xml, action=None):
         "Receive and proccess SOAP call"
@@ -55,20 +73,26 @@ class SoapDispatcher(object):
         soap_ns, soap_uri = self.soap_ns, self.soap_uri
         soap_fault_code = 'VersionMismatch'
         name = None
-
+        
         try:
             request = SimpleXMLElement(xml, namespace=self.namespace)
-
+            
+            _namespaces = dict(((v,k) for k,v in self.namespaces.iteritems())) # Switch keys-values
             # detect soap prefix and uri (xmlns attributes of Envelope)
             for k, v in request[:]:
                 if v in ("http://schemas.xmlsoap.org/soap/envelope/",
                                   "http://www.w3.org/2003/05/soap-env",):
                     soap_ns = request.attributes()[k].localName
                     soap_uri = request.attributes()[k].value
+                
+                elif v in self.namespaces.values():
+                    _ns =  request.attributes()[k].localName
+                    _uri = request.attributes()[k].value
+                    _namespaces[_uri] = _ns # update with received alias
             
             soap_fault_code = 'Client'
             
-            # parse request message and get local method            
+            # parse request message and get local method
             method = request('Body', ns=soap_uri).children()(0)
             if action:
                 # method name = action 
@@ -86,7 +110,7 @@ class SoapDispatcher(object):
             if args_types:
                 args = method.children().unmarshall(args_types)
             elif args_types is None:
-                args = {'request':method} # send raw request
+                args = {'request': method} # send raw request
             else:
                 args = {} # no parameters
  
@@ -98,8 +122,8 @@ class SoapDispatcher(object):
         except Exception, e:
             import sys
             etype, evalue, etb = sys.exc_info()
-            if DEBUG: 
-                import traceback
+            log.error(traceback.format_exc())
+            if self.debug:
                 detail = ''.join(traceback.format_exception(etype, evalue, etb))
                 detail += '\n\nXML REQUEST\n\n' + xml
             else:
@@ -113,18 +137,29 @@ class SoapDispatcher(object):
             xml = """<%(soap_ns)s:Envelope xmlns:%(soap_ns)s="%(soap_uri)s"/>"""  
         else:
             xml = """<%(soap_ns)s:Envelope xmlns:%(soap_ns)s="%(soap_uri)s"
-                       xmlns:%(prefix)s="%(namespace)s"/>"""  
-            
-        xml = xml % {'namespace': self.namespace, 'prefix': prefix,
+                       xmlns:%(prefix)s="%(namespace)s"/>"""
+        
+        xml %= {'namespace': self.namespace, 'prefix': prefix,
                      'soap_ns': soap_ns, 'soap_uri': soap_uri}
-
-        response = SimpleXMLElement(xml, namespace=self.namespace,
-                                    prefix=prefix)
-    
+        
+        xml = SoapDispatcher._extra_namespaces(xml, _namespaces)
+        
+        # Change our namespace alias to that given by client
+        mapping = {}
+        rev_ns = dict(((v,k) for k,v in self.namespaces.iteritems())) # Switch keys-values
+        for k, v in rev_ns.items():
+            mapping[v] = _namespaces[k]
+        
+        response = SimpleXMLElement(xml,
+                                    prefix=prefix,
+                                    namespace=self.namespace,
+                                    namespaces_map=mapping)
+        
         response['xmlns:xsi'] = "http://www.w3.org/2001/XMLSchema-instance"
         response['xmlns:xsd'] = "http://www.w3.org/2001/XMLSchema"
-
+        
         body = response.add_child("%s:Body" % soap_ns, ns=False)
+        
         if fault:
             # generate a Soap Fault (with the python exception)
             body.marshall("%s:Fault" % soap_ns, fault, ns=False)
