@@ -1,10 +1,13 @@
 #!/usr/bin/python
-# -*- coding: latin1 -*-
+# -*- coding: utf-8 -*-
 
+from __future__ import unicode_literals
+
+import os
 import unittest
 from pysimplesoap.client import SoapClient, SoapFault
-from dummy_utils import DummyHTTP, TEST_DIR
-import os
+
+from .dummy_utils import DummyHTTP, TEST_DIR
 
 
 class TestIssues(unittest.TestCase):
@@ -23,10 +26,10 @@ class TestIssues(unittest.TestCase):
         client.http = DummyHTTP(self.xml)
         client['AuthHeaderElement'] = {'username': 'mariano', 'password': 'clave'}
         response = client.PersonaSearch(persona=(('numero_documento', '99999999'),
-                                                  ('apellido_paterno', ''),
-                                                  ('apellido_materno', ''),
-                                                  ('nombres', ''),
-                                                  ))
+                                                 ('apellido_paterno', ''),
+                                                 ('apellido_materno', ''),
+                                                 ('nombres', ''),
+                                                 ))
 
         # the raw response is a SimpleXmlElement object:
 
@@ -48,11 +51,11 @@ class TestIssues(unittest.TestCase):
     def test_buscar_personas_wsdl(self):
         WSDL = "file://" + os.path.join(TEST_DIR, "licencias.wsdl")
         client = SoapClient(wsdl=WSDL, ns="web")
-        print client.help("PersonaSearch")
+        print(client.help("PersonaSearch"))
         client['AuthHeaderElement'] = {'username': 'mariano', 'password': 'clave'}
         client.http = DummyHTTP(self.xml)
         resultado = client.PersonaSearch(numero_documento='31867063')
-        print resultado
+        print(resultado)
 
         # each resultado['result'][i]['item'] is xsd:anyType, so it is not unmarshalled
         # they are SimpleXmlElement (see test_buscar_personas_raw)

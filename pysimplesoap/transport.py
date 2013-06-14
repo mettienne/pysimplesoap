@@ -14,6 +14,12 @@
 
 
 import logging
+try:
+    import urllib2
+    from cookielib import CookieJar
+except ImportError:
+    from urllib import request as urllib2
+    from http.cookiejar import CookieJar
 
 from . import __author__, __copyright__, __license__, __version__, TIMEOUT
 from .simplexml import SimpleXMLElement, TYPE_MAP, OrderedDict
@@ -73,7 +79,6 @@ else:
 #
 # urllib2 support.
 #
-import urllib2
 class urllib2Transport(TransportBase):
     _wrapper_version = "urllib2 %s" % urllib2.__version__
     _wrapper_name = 'urllib2'
@@ -88,7 +93,6 @@ class urllib2Transport(TransportBase):
 
         self.request_opener = urllib2.urlopen
         if sessions:
-            from cookielib import CookieJar
             opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(CookieJar()))
             self.request_opener = opener.open
 
@@ -98,7 +102,7 @@ class urllib2Transport(TransportBase):
         req = urllib2.Request(url, body, headers)
         try:
             f = self.request_opener(req, timeout=self._timeout)
-        except urllib2.HTTPError, f:
+        except urllib2.HTTPError as f:
             if f.code != 500:
                 raise
         return f.info(), f.read()
@@ -123,7 +127,10 @@ else:
     try:
         from cStringIO import StringIO
     except ImportError:
-        from StringIO import StringIO
+        try:
+            from StringIO import StringIO
+        except ImportError:
+            from io import StringIO
 
     class pycurlTransport(TransportBase):
         _wrapper_version = pycurl.version
@@ -136,7 +143,7 @@ else:
 
         def request(self, url, method, body, headers):
             c = pycurl.Curl()
-            c.setopt(pycurl.URL, str(url))
+            c.setopt(pycurl.URL, url)
             if 'proxy_host' in self.proxy:
                 c.setopt(pycurl.PROXY, self.proxy['proxy_host'])
             if 'proxy_port' in self.proxy:
@@ -149,7 +156,7 @@ else:
             #self.body = StringIO(body)
             #c.setopt(pycurl.HEADERFUNCTION, self.header)
             if self.cacert:
-                c.setopt(c.CAINFO, str(self.cacert))
+                c.setopt(c.CAINFO, self.cacert)
             c.setopt(pycurl.SSL_VERIFYPEER, self.cacert and 1 or 0)
             c.setopt(pycurl.SSL_VERIFYHOST, self.cacert and 2 or 0)
             c.setopt(pycurl.CONNECTTIMEOUT, self.timeout / 6)
@@ -158,7 +165,7 @@ else:
                 c.setopt(pycurl.POST, 1)
                 c.setopt(pycurl.POSTFIELDS, body)
             if headers:
-                hdrs = ['%s: %s' % (str(k), str(v)) for k, v in headers.items()]
+                hdrs = ['%s: %s' % (k, v) for k, v in headers.items()]
                 log.debug(hdrs)
                 c.setopt(pycurl.HTTPHEADER, hdrs)
             c.perform()

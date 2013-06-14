@@ -13,11 +13,16 @@
 """Pythonic simple SOAP Server implementation"""
 
 
+from __future__ import unicode_literals
+
 import sys
 import logging
 import re
 import traceback
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+try:
+    from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+except ImportError:
+    from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from . import __author__, __copyright__, __license__, __version__
 from .simplexml import SimpleXMLElement, TYPE_MAP, Date, Decimal
@@ -114,7 +119,7 @@ class SoapDispatcher(object):
         name = None
 
         # namespaces = [('model', 'http://model.common.mt.moboperator'), ('external', 'http://external.mt.moboperator')]
-        _ns_reversed = dict(((v, k) for k, v in self.namespaces.iteritems()))  # Switch keys-values
+        _ns_reversed = dict(((v, k) for k, v in self.namespaces.items()))  # Switch keys-values
         # _ns_reversed = {'http://external.mt.moboperator': 'external', 'http://model.common.mt.moboperator': 'model'}
 
         try:
@@ -180,7 +185,7 @@ class SoapDispatcher(object):
             else:
                 detail = None
             fault = {'faultcode': "%s.%s" % (soap_fault_code, etype.__name__),
-                     'faultstring': unicode(evalue),
+                     'faultstring': evalue,
                      'detail': detail}
 
         # build response message
@@ -203,7 +208,7 @@ class SoapDispatcher(object):
         # Change our namespace alias to that given by the client.
         # We put [('model', 'http://model.common.mt.moboperator'), ('external', 'http://external.mt.moboperator')]
         # mix it with {'http://external.mt.moboperator': 'ext', 'http://model.common.mt.moboperator': 'mod'}
-        mapping = dict(((k, _ns_reversed[v]) for k, v in self.namespaces.iteritems()))  # Switch keys-values and change value
+        mapping = dict(((k, _ns_reversed[v]) for k, v in self.namespaces.items()))  # Switch keys-values and change value
         # and get {'model': u'mod', 'external': u'ext'}
 
         response = SimpleXMLElement(xml,
@@ -538,7 +543,7 @@ if __name__ == "__main__":
         wsgid.serve_forever()
 
     if '--consume' in sys.argv:
-        from client import SoapClient
+        from .client import SoapClient
         client = SoapClient(
             location="http://localhost:8008/",
             action='http://localhost:8008/',  # SOAPAction

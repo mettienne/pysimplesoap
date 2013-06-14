@@ -12,6 +12,12 @@
 
 """Simple XML manipulation"""
 
+
+from __future__ import unicode_literals
+import sys
+if sys.version > '3':
+    basestring = str
+
 import logging
 import re
 import time
@@ -73,6 +79,8 @@ class Alias(object):
     def __repr__(self):
         return "<alias '%s' for '%s'>" % (self.xml_type, self.py_type)
 
+if sys.version > '3':
+    long = Alias(int, 'long')
 byte = Alias(str, 'byte')
 short = Alias(int, 'short')
 double = Alias(float, 'double')
@@ -84,7 +92,7 @@ Time = datetime.time
 # Define convertion function (python type): xml schema type
 TYPE_MAP = {
     str: 'string',
-    unicode: 'string',
+    #unicode: 'string',
     bool: 'boolean',
     short: 'short',
     byte: 'byte',
@@ -106,7 +114,7 @@ TYPE_UNMARSHAL_FN = {
     datetime.datetime: datetime_u,
     datetime.date: date_u,
     bool: bool_u,
-    str: unicode,
+    #str: unicode,
 }
 
 REVERSE_TYPE_MAP = dict([(v, k) for k, v in TYPE_MAP.items()])
@@ -166,7 +174,7 @@ class OrderedDict(dict):
 
 
 class SimpleXMLElement(object):
-    "Simple XML manipulation (simil PHP)"
+    """Simple XML manipulation (simil PHP)"""
 
     def __init__(self, text=None, elements=None, document=None,
                  namespace=None, prefix=None, namespaces_map={}, jetty=False):
@@ -207,10 +215,7 @@ class SimpleXMLElement(object):
                 element = self.__document.createElementNS(self.__ns, name)
         # don't append null tags!
         if text is not None:
-            if isinstance(text, unicode):
-                element.appendChild(self.__document.createTextNode(text))
-            else:
-                element.appendChild(self.__document.createTextNode(str(text)))
+            element.appendChild(self.__document.createTextNode(text))
         self._element.appendChild(element)
         return SimpleXMLElement(
             elements=[element],
@@ -286,7 +291,7 @@ class SimpleXMLElement(object):
                 return self._element.attributes[item].value
         elif isinstance(item, slice):
             # return a list with name:values
-            return self._element.attributes.items()[item]
+            return list(self._element.attributes.items())[item]
         else:
             # return element by index (position)
             element = self.__elements[item]
@@ -351,7 +356,7 @@ class SimpleXMLElement(object):
             if not elements:
                 #log.debug(self._element.toxml())
                 if error:
-                    raise AttributeError(u"No elements found")
+                    raise AttributeError("No elements found")
                 else:
                     return
             return SimpleXMLElement(
@@ -361,8 +366,8 @@ class SimpleXMLElement(object):
                 prefix=self.__prefix,
                 jetty=self.__jetty,
                 namespaces_map=self.__namespaces_map)
-        except AttributeError, e:
-            raise AttributeError(u"Tag not found: %s (%s)" % (tag, unicode(e)))
+        except AttributeError as e:
+            raise AttributeError("Tag not found: %s (%s)" % (tag, e))
 
     def __getattr__(self, tag):
         """Shortcut for __call__"""
@@ -415,7 +420,7 @@ class SimpleXMLElement(object):
     def __unicode__(self):
         """Returns the unicode text nodes of the current element"""
         if self._element.childNodes:
-            rc = u""
+            rc = ""
             for node in self._element.childNodes:
                 if node.nodeType == node.TEXT_NODE:
                     rc = rc + node.data
@@ -424,7 +429,7 @@ class SimpleXMLElement(object):
 
     def __str__(self):
         """Returns the str text nodes of the current element"""
-        return unicode(self).encode("utf8", "ignore")
+        return self.__unicode__()
 
     def __int__(self):
         """Returns the integer value of the current element"""
@@ -460,17 +465,17 @@ class SimpleXMLElement(object):
                         break
             try:
                 fn = types[name]
-            except (KeyError, ), e:
+            except (KeyError, ) as e:
                 if node.get_namespace_uri("soapenc"):
                     fn = None  # ignore multirefs!
                 elif 'xsi:type' in node.attributes().keys():
                     xsd_type = node['xsi:type'].split(":")[1]
                     fn = REVERSE_TYPE_MAP[xsd_type]
                 elif strict:
-                    raise TypeError(u"Tag: %s invalid (type not found)" % (name,))
+                    raise TypeError("Tag: %s invalid (type not found)" % (name,))
                 else:
                     # if not strict, use default type conversion
-                    fn = unicode
+                    fn = str
 
             if isinstance(fn, list):
                 # append to existing list (if any) - unnested dict arrays -
@@ -519,17 +524,13 @@ class SimpleXMLElement(object):
             else:
                 if fn is None:  # xsd:anyType not unmarshalled
                     value = node
-                elif str(node) or fn == str:
+                elif str(node) or (fn == str and str(node) != ''):
                     try:
                         # get special deserialization function (if any)
                         fn = TYPE_UNMARSHAL_FN.get(fn, fn)
-                        if fn == str:
-                            # always return an unicode object:
-                            value = unicode(node)
-                        else:
-                            value = fn(unicode(node))
-                    except (ValueError, TypeError), e:
-                        raise ValueError(u"Tag: %s: %s" % (name, unicode(e)))
+                        value = fn(str(node))
+                    except (ValueError, TypeError) as e:
+                        raise ValueError("Tag: %s: %s" % (name, e))
                 else:
                     value = None
             d[name] = value

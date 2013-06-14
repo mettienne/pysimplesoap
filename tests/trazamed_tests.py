@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# -*- coding: latin-1 -*-
+# -*- coding: utf-8 -*-
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by the
 # Free Software Foundation; either version 3, or (at your option) any later
@@ -10,7 +10,7 @@
 # or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 # for more details.
 
-"Argentina National Medical Drug Traceability Program (ANMAT - PAMI - INSSJP)"
+"""Argentina National Medical Drug Traceability Program (ANMAT - PAMI - INSSJP)"""
 
 __author__ = "Mariano Reingart <reingart@gmail.com>"
 __copyright__ = "Copyright (C) 2011 Mariano Reingart"
@@ -28,7 +28,7 @@ from pysimplesoap.client import SoapClient, SoapFault, parse_proxy, \
 HOMO = False
 
 WSDL = "https://186.153.145.2:9050/trazamed.WebService?wsdl"
-       #https://186.153.145.2:9050/trazamed.WebService?wsdl
+        #https://186.153.145.2:9050/trazamed.WebService?wsdl
 LOCATION = "https://186.153.145.2:9050/trazamed.WebService"
 #WSDL = "https://trazabilidad.pami.org.ar:9050/trazamed.WebService?wsdl"
 
