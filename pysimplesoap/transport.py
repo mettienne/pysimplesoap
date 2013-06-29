@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# -*- coding: latin-1 -*-
+# -*- coding: utf-8 -*-
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by the
 # Free Software Foundation; either version 3, or (at your option) any later
@@ -10,24 +10,21 @@
 # or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 # for more details.
 
-"Pythonic simple SOAP Client implementation"
+"""Pythonic simple SOAP Client transport"""
 
-__author__ = "Mariano Reingart (reingart@gmail.com)"
-__copyright__ = "Copyright (C) 2008 Mariano Reingart"
-__license__ = "LGPL 3.0"
 
-TIMEOUT = 60
-
-import os
-import cPickle as pickle
-import urllib2
-from urlparse import urlparse
-import tempfile
-from simplexml import SimpleXMLElement, TYPE_MAP, OrderedDict
 import logging
+try:
+    import urllib2
+    from cookielib import CookieJar
+except ImportError:
+    from urllib import request as urllib2
+    from http.cookiejar import CookieJar
+
+from . import __author__, __copyright__, __license__, __version__, TIMEOUT
+from .simplexml import SimpleXMLElement, TYPE_MAP, OrderedDict
 
 log = logging.getLogger(__name__)
-logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.WARNING)
 
 #
 # Socket wrapper to enable socket.TCP_NODELAY - this greatly speeds up transactions in Linux
@@ -43,8 +40,9 @@ socket.socket = socketwrap
 #
 # We store metadata about what available transport mechanisms we have available.
 #
-_http_connectors = {} # libname: classimpl mapping
-_http_facilities = {} # functionalitylabel: [sequence of libname] mapping
+_http_connectors = {}  # libname: classimpl mapping
+_http_facilities = {}  # functionalitylabel: [sequence of libname] mapping
+
 
 class TransportBase:
     @classmethod
@@ -57,26 +55,27 @@ class TransportBase:
 try:
     import httplib2
 except ImportError:
-    TIMEOUT = None # timeout not supported by urllib2
+    TIMEOUT = None  # timeout not supported by urllib2
     pass
 else:
     class Httplib2Transport(httplib2.Http, TransportBase):
         _wrapper_version = "httplib2 %s" % httplib2.__version__
         _wrapper_name = 'httplib2'
+
         def __init__(self, timeout, proxy=None, cacert=None, sessions=False):
             ##httplib2.debuglevel=4
             kwargs = {}
             if proxy:
                 import socks
                 kwargs['proxy_info'] = httplib2.ProxyInfo(proxy_type=socks.PROXY_TYPE_HTTP, **proxy)
-                print "using proxy", proxy
+                log.debug("using proxy %s" % proxy)
 
             # set optional parameters according supported httplib2 version
             if httplib2.__version__ >= '0.3.0':
                 kwargs['timeout'] = timeout
             if httplib2.__version__ >= '0.7.0':
                 kwargs['disable_ssl_certificate_validation'] = cacert is None
-                kwargs['ca_certs'] = cacert    
+                kwargs['ca_certs'] = cacert
             httplib2.Http.__init__(self, **kwargs)
 
     _http_connectors['httplib2'] = Httplib2Transport
@@ -87,15 +86,15 @@ else:
     if 'timeout' in inspect.getargspec(httplib2.Http.__init__)[0]:
         _http_facilities.setdefault('timeout', []).append('httplib2')
 
+
 #
 # urllib2 support.
 #
-import urllib2
 class urllib2Transport(TransportBase):
     _wrapper_version = "urllib2 %s" % urllib2.__version__
-    _wrapper_name = 'urllib2' 
+    _wrapper_name = 'urllib2'
+
     def __init__(self, timeout=None, proxy=None, cacert=None, sessions=False):
-        import sys
         if (timeout is not None) and not self.supports_feature('timeout'):
             raise RuntimeError('timeout is not supported with urllib2 transport')
         if proxy:
@@ -105,17 +104,16 @@ class urllib2Transport(TransportBase):
 
         self.request_opener = urllib2.urlopen
         if sessions:
-            from cookielib import CookieJar
             opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(CookieJar()))
             self.request_opener = opener.open
-            
+
         self._timeout = timeout
 
     def request(self, url, method="GET", body=None, headers={}):
         req = urllib2.Request(url, body, headers)
         try:
             f = self.request_opener(req, timeout=self._timeout)
-        except urllib2.HTTPError, f:
+        except urllib2.HTTPError as f:
             if f.code != 500:
                 raise
         return f.info(), f.read()
@@ -124,7 +122,7 @@ _http_connectors['urllib2'] = urllib2Transport
 _http_facilities.setdefault('sessions', []).append('urllib2')
 
 import sys
-if sys.version_info >= (2,6):
+if sys.version_info >= (2, 6):
     _http_facilities.setdefault('timeout', []).append('urllib2')
 del sys
 
@@ -140,19 +138,23 @@ else:
     try:
         from cStringIO import StringIO
     except ImportError:
-        from StringIO import StringIO
+        try:
+            from StringIO import StringIO
+        except ImportError:
+            from io import StringIO
 
     class pycurlTransport(TransportBase):
         _wrapper_version = pycurl.version
         _wrapper_name = 'pycurl'
+
         def __init__(self, timeout, proxy=None, cacert=None, sessions=False):
-            self.timeout = timeout 
+            self.timeout = timeout
             self.proxy = proxy or {}
             self.cacert = cacert
-               
+
         def request(self, url, method, body, headers):
             c = pycurl.Curl()
-            c.setopt(pycurl.URL, str(url))
+            c.setopt(pycurl.URL, url)
             if 'proxy_host' in self.proxy:
                 c.setopt(pycurl.PROXY, self.proxy['proxy_host'])
             if 'proxy_port' in self.proxy:
@@ -165,20 +167,19 @@ else:
             #self.body = StringIO(body)
             #c.setopt(pycurl.HEADERFUNCTION, self.header)
             if self.cacert:
-                c.setopt(c.CAINFO, str(self.cacert)) 
+                c.setopt(c.CAINFO, self.cacert)
             c.setopt(pycurl.SSL_VERIFYPEER, self.cacert and 1 or 0)
             c.setopt(pycurl.SSL_VERIFYHOST, self.cacert and 2 or 0)
-            c.setopt(pycurl.CONNECTTIMEOUT, self.timeout/6) 
+            c.setopt(pycurl.CONNECTTIMEOUT, self.timeout / 6)
             c.setopt(pycurl.TIMEOUT, self.timeout)
-            if method=='POST':
+            if method == 'POST':
                 c.setopt(pycurl.POST, 1)
-                c.setopt(pycurl.POSTFIELDS, body)            
+                c.setopt(pycurl.POSTFIELDS, body)
             if headers:
-                hdrs = ['%s: %s' % (str(k), str(v)) for k, v in headers.items()]
-                ##print hdrs
+                hdrs = ['%s: %s' % (k, v) for k, v in headers.items()]
+                log.debug(hdrs)
                 c.setopt(pycurl.HTTPHEADER, hdrs)
             c.perform()
-            ##print "pycurl perform..."
             c.close()
             return {}, self.buf.getvalue()
 
@@ -189,15 +190,15 @@ else:
 
 
 class DummyTransport:
-    "Testing class to load a xml response"
-    
+    """Testing class to load a xml response"""
+
     def __init__(self, xml_response):
         self.xml_response = xml_response
-        
+
     def request(self, location, method, body, headers):
-        print method, location
-        print headers
-        print body
+        log.debug("%s %s", method, location)
+        log.debug(headers)
+        log.debug(body)
         return {}, self.xml_response
 
 
@@ -233,20 +234,19 @@ def get_http_wrapper(library=None, features=[]):
     else:
         return _http_connectors[candidate_name]
 
+
 def set_http_wrapper(library=None, features=[]):
-    "Set a suitable HTTP connection wrapper."
+    """Set a suitable HTTP connection wrapper."""
     global Http
     Http = get_http_wrapper(library, features)
     return Http
 
 
 def get_Http():
-    "Return current transport class"
+    """Return current transport class"""
     global Http
     return Http
 
-    
+
 # define the default HTTP connection class (it can be changed at runtime!):
 set_http_wrapper()
-
-
