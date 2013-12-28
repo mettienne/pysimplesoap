@@ -7,7 +7,7 @@ from pysimplesoap.client import SoapClient, SimpleXMLElement, SoapFault
 import sys
 if sys.version > '3':
     basestring = str
-    
+
 
 class TestIssues(unittest.TestCase):
 
@@ -101,7 +101,7 @@ class TestIssues(unittest.TestCase):
         URL='http://ec.europa.eu/taxation_customs/vies/checkVatService.wsdl'
         client = SoapClient(wsdl=URL)
         # check the correct target namespace:
-        self.assertEqual(client.namespace, 
+        self.assertEqual(client.namespace,
                          "urn:ec.europa.eu:taxud:vies:services:checkVat:types")
         # call the webservice to check everything else:
         vat = 'BE0897290877'
@@ -265,7 +265,7 @@ class TestIssues(unittest.TestCase):
 
     def test_issue101(self):
         """automatic relative import support"""
-        
+
         client = SoapClient(wsdl="https://raw.github.com/vadimcomanescu/vmwarephp/master/library/Vmwarephp/Wsdl/vimService.wsdl")
         try:
             client.Login(parameters={'userName': 'username', 'password': 'password'})
@@ -292,7 +292,7 @@ class TestIssues(unittest.TestCase):
 
     def test_issue109(self):
         """Test multirefs and string arrays"""
-        
+
         WSDL = 'http://usqcd.jlab.org/mdc-service/services/ILDGMDCService?wsdl'
 
         client = SoapClient(wsdl=WSDL,soap_server='axis')
@@ -307,7 +307,7 @@ class TestIssues(unittest.TestCase):
 
     def test_issue109bis(self):
         """Test string arrays not defined in the wsdl (but sent in the response)"""
-        
+
         WSDL = 'http://globe-meta.ifh.de:8080/axis/services/ILDG_MDC?wsdl'
 
         client = SoapClient(wsdl=WSDL,soap_server='axis')
@@ -328,7 +328,7 @@ class TestIssues(unittest.TestCase):
             # ignore exception caused by missing credentials sent in this test:
             if sf.faultstring != "An error was discovered processing the <wsse:Security> header":
                 raise
-        
+
         # verify the correct namespace:
         xml = SimpleXMLElement(client.xml_request)
         ns_uri = xml.getOrderStatusExtended['xmlns']
@@ -345,12 +345,12 @@ class TestIssues(unittest.TestCase):
             # ignore exception caused by missing credentials sent in this test:
             if sf.faultstring != "An error occurred when verifying security for the message.":
                 raise
-        
+
         # verify the correct namespace:
         xml = SimpleXMLElement(client.xml_request)
         ns_uri = xml.SetEnqueueServerStop['xmlns']
         self.assertEqual(ns_uri,
-                         "https://api.computing.cloud.it/WsEndUser")        
+                         "https://api.computing.cloud.it/WsEndUser")
 
     def test_issue114(self):
         """Test no schema in wsdl (Lotus-Domino)"""
