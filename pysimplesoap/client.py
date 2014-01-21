@@ -201,7 +201,11 @@ class SoapClient(object):
             # marshall parameters:
             use_ns = None if (self.__soap_server == "jetty" or self.qualified is False) else True
             for k, v in parameters:  # dict: tag=valor
-                getattr(request, method).marshall(k, v, ns=use_ns)
+                if hasattr(v, "namespaces") and use_ns:
+                    ns = v.namespaces.get(None, True)
+                else:
+                    ns = use_ns
+                getattr(request, method).marshall(k, v, ns=ns)
         elif not self.__soap_server in ('oracle',) or self.__soap_server in ('jbossas6',):
             # JBossAS-6 requires no empty method parameters!
             delattr(request("Body", ns=list(soap_namespaces.values()),), method)
@@ -674,7 +678,7 @@ class SoapClient(object):
                             op['header'] = header
                             try:
                                 element = list(op['input'].values())[0]
-                                ns_uri = element.namespace
+                                ns_uri = element.namespaces[None]       # TODO: FIX
                                 qualified = element.qualified
                             except AttributeError:
                                 # TODO: fix if no parameters parsed or "variants"
