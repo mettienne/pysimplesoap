@@ -26,6 +26,7 @@ import hashlib
 import logging
 import os
 import tempfile
+import warnings
 
 from . import __author__, __copyright__, __license__, __version__, TIMEOUT
 from .simplexml import SimpleXMLElement, TYPE_MAP, REVERSE_TYPE_MAP, Struct
@@ -34,6 +35,7 @@ from .transport import get_http_wrapper, set_http_wrapper, get_Http
 from .helpers import fetch, sort_dict, make_key, process_element, \
                      postprocess_element, get_message, preprocess_schema, \
                      get_local_name, get_namespace_prefix, TYPE_MAP, urlsplit
+from .wsse import UsernameToken
 
 
 log = logging.getLogger(__name__)
@@ -77,7 +79,7 @@ class SoapClient(object):
                  sessions=False, soap_server=None, timeout=TIMEOUT,
                  http_headers=None, trace=False,
                  username=None, password=None,
-                 key_file=None,
+                 key_file=None, plugins=None,
                  ):
         """
         :param http_headers: Additional HTTP Headers; example: {'Host': 'ipsec.example.com'}
@@ -90,6 +92,7 @@ class SoapClient(object):
         self.exceptions = exceptions    # lanzar execpiones? (Soap Faults)
         self.xml_request = self.xml_response = ''
         self.http_headers = http_headers or {}
+        self.plugins = plugins or []
         # extract the base directory / url for wsdl relative imports:
         if wsdl and wsdl_basedir == '':
             # parse the wsdl url, strip the scheme and filename
@@ -185,11 +188,12 @@ class SoapClient(object):
         """
         #TODO: method != input_message
         # Basic SOAP request:
+        soap_uri = soap_namespaces[self.__soap_ns]
         xml = self.__xml % dict(method=method,              # method tag name
                                 namespace=self.namespace,   # method ns uri
                                 ns=self.__ns,               # method ns prefix
                                 soap_ns=self.__soap_ns,     # soap prefix & uri
-                                soap_uri=soap_namespaces[self.__soap_ns])
+                                soap_uri=soap_uri)
         request = SimpleXMLElement(xml, namespace=self.__ns and self.namespace,
                                         prefix=self.__ns)
 
@@ -201,12 +205,11 @@ class SoapClient(object):
         else:
             parameters = args
         if parameters and isinstance(parameters[0], SimpleXMLElement):
+            body = request('Body', ns=list(soap_namespaces.values()),)
+            # remove default body parameter (method name)
+            delattr(body, method)
             # merge xmlelement parameter ("raw" - already marshalled)
-            if parameters[0].children() is not None:
-                for param in parameters[0].children():
-                    getattr(request, method).import_node(param)
-                for k,v in parameters[0].attributes().items():
-                    getattr(request, method)[k] = v
+            body.import_node(parameters[0])
         elif parameters:
             # marshall parameters:
             use_ns = None if (self.__soap_server == "jetty" or self.qualified is False) else True
@@ -224,15 +227,12 @@ class SoapClient(object):
         if self.__headers and not self.services:
             self.__call_headers = dict([(k, v) for k, v in self.__headers.items()
                                         if not k.startswith('wsse:')])
-        # always extract WS Security header and send it
-        if 'wsse:Security' in self.__headers:
-            #TODO: namespaces too hardwired, clean-up...
-            header = request('Header', ns=list(soap_namespaces.values()),)
-            k = 'wsse:Security'
-            v = self.__headers[k]
-            header.marshall(k, v, ns=False, add_children_ns=False)
-            header(k)['xmlns:wsse'] = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd'
-            #<wsse:UsernameToken xmlns:wsu='http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd'>
+        # always extract WS Security header and send it (backward compatible)
+        if 'wsse:Security' in self.__headers and not self.plugins:
+            warnings.warn("Replace wsse:Security with UsernameToken plugin", 
+                          DeprecationWarning)
+            self.plugins.append(UsernameToken())
+
         if self.__call_headers:
             header = request('Header', ns=list(soap_namespaces.values()),)
             for k, v in self.__call_headers.items():
@@ -250,12 +250,23 @@ class SoapClient(object):
             for subheader in request_headers.children():
                 header.import_node(subheader)
 
+        # do pre-processing using plugins (i.e. WSSE signing)
+        for plugin in self.plugins:
+            plugin.preprocess(self, request, method, args, kwargs, 
+                                    self.__headers, soap_uri)
+
         self.xml_request = request.as_xml()
         self.xml_response = self.send(method, self.xml_request)
         response = SimpleXMLElement(self.xml_response, namespace=self.namespace,
                                     jetty=self.__soap_server in ('jetty',))
         if self.exceptions and response("Fault", ns=list(soap_namespaces.values()), error=False):
             raise SoapFault(unicode(response.faultcode), unicode(response.faultstring))
+
+        # do post-processing using plugins (i.e. WSSE signature verification)
+        for plugin in self.plugins:
+            plugin.postprocess(self, response, method, args, kwargs, 
+                                     self.__headers, soap_uri)
+
         return response
 
     def send(self, method, xml):
@@ -584,7 +595,7 @@ class SoapClient(object):
                     # some implementations (axis) uses type instead
                     element_name = part['type']
                 type_ns = get_namespace_prefix(element_name)
-                type_uri = wsdl.get_namespace_uri(type_ns)
+                type_uri = part.get_namespace_uri(type_ns)
                 part_name = part['name'] or None
                 if type_uri == self.xsd_uri:
                     element_name = get_local_name(element_name)

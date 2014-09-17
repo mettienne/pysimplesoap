@@ -190,6 +190,10 @@ class SimpleXMLElement(object):
             for k, v in value.items():
                 self.add_attribute(k, v)
 
+    def __delitem__(self, item):
+        "Remove an attribute"
+        self._element.removeAttribute(item)
+
     def __call__(self, tag=None, ns=None, children=False, root=False,
                  error=True, ):
         """Search (even in child nodes) and return a child tag by name"""
@@ -508,3 +512,10 @@ class SimpleXMLElement(object):
     def import_node(self, other):
         x = self.__document.importNode(other._element, True)  # deep copy
         self._element.appendChild(x)
+
+    def write_c14n(self, output=None, exclusive=True):
+        "Generate the canonical version of the XML node"
+        from . import c14n
+        xml = c14n.Canonicalize(self._element, output,
+                                unsuppressedPrefixes=[] if exclusive else None)
+        return xml
