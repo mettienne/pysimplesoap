@@ -17,7 +17,7 @@ __copyright__ = "Copyright (C) 2008 Mariano Reingart"
 __license__ = "LGPL 3.0"
 
 TIMEOUT = 60
-USE_SSLv3 = False    # prevent issues with SSLv23/TLSv1 on some systems (i.e. Ubuntu 14.04)
+USE_SSLv3 = True    # prevent issues with SSLv23/TLSv1 on some systems (i.e. Ubuntu 14.04)
 
 import os
 import cPickle as pickle
@@ -74,6 +74,11 @@ else:
                 kwargs['disable_ssl_certificate_validation'] = cacert is None
                 kwargs['ca_certs'] = cacert
             if USE_SSLv3 and ssl:
+                # downgrade to highest compatible protocol version available:
+                try:
+                    ver = ssl.PROTOCOL_TLSv1
+                except AttributeError:
+                    ver = ssl.PROTOCOL_SSLv3
                 def _ssl_wrap_socket(sock, key_file, cert_file,
                                      disable_validation, ca_certs):
                     if disable_validation:
@@ -82,7 +87,8 @@ else:
                         cert_reqs = ssl.CERT_REQUIRED
                     return ssl.wrap_socket(sock, keyfile=key_file, certfile=cert_file,
                                    cert_reqs=cert_reqs, ca_certs=ca_certs,
-                                   ssl_version=ssl.PROTOCOL_SSLv3)
+                                   #suppress_ragged_eofs=False,
+                                   ssl_version=ver)
                 httplib2._ssl_wrap_socket = _ssl_wrap_socket
             httplib2.Http.__init__(self, **kwargs)
 
@@ -175,6 +181,8 @@ else:
                 c.setopt(c.CAINFO, str(self.cacert)) 
             if USE_SSLv3:
                 c.setopt(pycurl.SSLVERSION, pycurl.SSLVERSION_SSLv3)
+            elif USE_SSLv3 is not None:
+                c.setopt(pycurl.SSLVERSION, pycurl.SSLVERSION_TLSv1)
             c.setopt(pycurl.SSL_VERIFYPEER, self.cacert and 1 or 0)
             c.setopt(pycurl.SSL_VERIFYHOST, self.cacert and 2 or 0)
             c.setopt(pycurl.CONNECTTIMEOUT, self.timeout/6) 
