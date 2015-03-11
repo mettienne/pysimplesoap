@@ -470,14 +470,14 @@ class SimpleXMLElement(object):
                 # TODO: check if this was really needed (get first child only)
                 ##if len(fn[0]) == 1 and children:
                 ##    children = children()
-                if self.__jetty and len(fn[0]) > 1: 
-                    # Jetty array style support [{k, v}]
+                if self.__jetty or len(fn[0]) > 1: 
+                    # Jetty array style support [{k: v}]
                     for parent in node:
                         tmp_dict = {}    # unmarshall each value & mix
                         for child in (node.children() or []):
                             tmp_dict.update(child.unmarshall(fn[0], strict))
                         value.append(tmp_dict)  
-                else:  # .Net / Java                   
+                else:  # .Net / Java [{type: {k: v}]
                     for child in (children or []):
                         value.append(child.unmarshall(fn[0], strict))
             
