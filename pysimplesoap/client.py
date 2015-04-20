@@ -28,6 +28,8 @@ import os
 import tempfile
 import warnings
 
+import re
+
 from . import __author__, __copyright__, __license__, __version__, TIMEOUT
 from .simplexml import SimpleXMLElement, TYPE_MAP, REVERSE_TYPE_MAP, Struct
 from .transport import get_http_wrapper, set_http_wrapper, get_Http
@@ -253,6 +255,8 @@ class SoapClient(object):
                                     self.__headers, soap_uri)
 
         self.xml_request = request.as_xml()
+        self.xml_request = re.sub(r'<([^>]*) xmlns="http://e-conomic.com">\n *</\1>', r'<\1 xmlns="http://e-conomic.com" />', self.xml_request, flags=re.MULTILINE & re.DOTALL)
+
         self.xml_response = self.send(method, self.xml_request)
         response = SimpleXMLElement(self.xml_response, namespace=self.namespace,
                                     jetty=self.__soap_server in ('jetty',))
