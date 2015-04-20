@@ -89,14 +89,21 @@ def sort_dict(od, d):
     if isinstance(od, dict):
         ret = Struct()
         for k in od.keys():
-            v = d.get(k)
+            v = d.get(k, '__skip__')
             # don't append null tags!
-            if v is not None:
-                if isinstance(v, dict):
-                    v = sort_dict(od[k], v)
-                elif isinstance(v, list):
-                    v = [sort_dict(od[k][0], v1) for v1 in v]
+            if v == '__skip__':
+                continue
+            
+            if isinstance(v, dict):
+                v = sort_dict(od[k], v)
+            elif isinstance(v, list):
+                v = [sort_dict(od[k][0], v1) for v1 in v]
+            
+            if v is None:
+                ret[k + ' xsi:nul="true"'] = v
+            else:
                 ret[k] = v
+            
         if hasattr(od, 'namespaces'):
             ret.namespaces.update(od.namespaces)
             ret.references.update(od.references)
