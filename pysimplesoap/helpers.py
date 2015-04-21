@@ -100,7 +100,7 @@ def sort_dict(od, d):
                 v = [sort_dict(od[k][0], v1) for v1 in v]
             
             if v is None:
-                ret[k + ' xsi:nul="true"'] = v
+                ret[k + ' xsi:nil="true"'] = v
             else:
                 ret[k] = v
             
